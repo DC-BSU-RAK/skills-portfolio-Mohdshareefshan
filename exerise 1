@@ -1,0 +1,333 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+from PIL import Image, ImageTk
+import random
+import os, wave, math, struct
+import pygame
+
+# === BASE PATH (IMPORTANT) ===
+BASE = os.path.dirname(os.path.abspath(__file__))
+
+def path(folder, file):
+    return os.path.join(BASE, folder, file)
+
+# === AUTO SOUND CREATION === #
+def make_tone(filename, freq=440, duration=0.3, volume=16000):
+    framerate = 44100
+    with wave.open(filename, "w") as f:
+        f.setparams((1, 2, framerate, 0, "NONE", "not compressed"))
+        for i in range(int(duration * framerate)):
+            value = int(volume * math.sin(2 * math.pi * freq * (i / framerate)))
+            f.writeframes(struct.pack("<h", value))
+
+# Create sound folder path
+sound_folder = path("sound", "")
+
+# Generate tones if not existing
+if not os.path.exists(path("sound", "correct.wav")):
+    make_tone(path("sound", "correct.wav"), 880, 0.25)
+
+if not os.path.exists(path("sound", "wrong.wav")):
+    make_tone(path("sound", "wrong.wav"), 220, 0.35)
+
+if not os.path.exists(path("sound", "timeout.wav")):
+    make_tone(path("sound", "timeout.wav"), 440, 0.15)
+
+# === INITIALIZE SOUND ===
+pygame.mixer.init()
+try:
+    pygame.mixer.music.load(path("sound", "background.mp3"))
+    pygame.mixer.music.set_volume(0.1)
+    pygame.mixer.music.play(-1)
+except Exception as e:
+    print("Background music error:", e)
+
+try:
+    correct_sound = pygame.mixer.Sound(path("sound", "correct.wav"))
+    wrong_sound = pygame.mixer.Sound(path("sound", "wrong.wav"))
+    timeout_sound = pygame.mixer.Sound(path("sound", "timeout.wav"))
+except Exception as e:
+    print("Sound effect error:", e)
+    correct_sound = wrong_sound = timeout_sound = None
+
+sound_enabled = True
+
+# === COLORS ===
+BG = "#f9fafc"
+
+# === GLOBAL VARIABLES ===
+timer_label = None
+progress = None
+time_left = 10
+timer_running = False
+skip_button = None
+skip_enabled = False
+difficulty = None
+level_color = None
+score = 0
+question_number = 0
+attempt = 1
+score_label = None
+
+# === SOUND CONTROL ===
+def play_sound(sound):
+    if sound_enabled and sound is not None:
+        try:
+            sound.play()
+        except:
+            pass
+
+def toggle_sound():
+    global sound_enabled
+    sound_enabled = not sound_enabled
+    if sound_enabled:
+        sound_btn.config(text="🔊 Sound On")
+        try:
+            pygame.mixer.music.play(-1)
+        except:
+            pass
+    else:
+        sound_btn.config(text="🔇 Sound Off")
+        pygame.mixer.music.stop()
+
+# === APP SETUP ===
+root = tk.Tk()
+root.title("🎧 Math Quiz with Score Display")
+root.geometry(f"{root.winfo_screenwidth()}x{root.winfo_screenheight()}")
+root.configure(bg=BG)
+
+# === UTILITIES ===
+def clear_window():
+    for widget in root.winfo_children():
+        widget.destroy()
+
+def set_background(image_name):
+    try:
+        img = Image.open(path("image", image_name))
+        img = img.resize((root.winfo_screenwidth(), root.winfo_screenheight()), Image.LANCZOS)
+        bg_img = ImageTk.PhotoImage(img)
+        bg_label = tk.Label(root, image=bg_img)
+        bg_label.image = bg_img
+        bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+    except Exception as e:
+        print(f"Background image error: {e}")
+        root.config(bg=BG)
+
+def make_neon_button(parent, text, color, command):
+    btn = tk.Label(parent, text=text, font=("Poppins", 22, "bold"), bg="#000000", fg=color, padx=25, pady=12, cursor="hand2")
+    btn.bind("<Button-1>", lambda e: command())
+    def glow():
+        btn.config(fg=color if btn.cget("fg") == "white" else "white")
+        root.after(600, glow)
+    glow()
+    return btn
+
+def make_toggle_button(parent, text, command, color="#007BFF"):
+    btn = tk.Button(
+        parent,
+        text=text,
+        font=("Poppins", 18, "bold"),
+        bg=color,
+        fg="white",
+        activebackground=color,
+        activeforeground="white",
+        relief="flat",
+        bd=0,
+        padx=25,
+        pady=10,
+        cursor="hand2",
+        command=command
+    )
+    def on_enter(e): btn.config(bg="white", fg=color)
+    def on_leave(e): btn.config(bg=color, fg="white")
+    btn.bind("<Enter>", on_enter)
+    btn.bind("<Leave>", on_leave)
+    return btn
+
+# === SCREENS ===
+def show_start_screen():
+    clear_window()
+    set_background("quize.jpg")
+
+    global sound_btn
+    button_frame = tk.Frame(root, bg="#000000")
+    button_frame.place(relx=0.5, rely=0.9, anchor="center")
+
+    make_neon_button(button_frame, "🟢 EASY", "#00FF00", lambda: show_instructions("Easy", "#00FF00")).pack(side="left", padx=25)
+    make_neon_button(button_frame, "🟠 MODERATE", "#FFA500", lambda: show_instructions("Moderate", "#FFA500")).pack(side="left", padx=25)
+    make_neon_button(button_frame, "🔴 ADVANCED", "#FF0000", lambda: show_instructions("Advanced", "#FF0000")).pack(side="left", padx=25)
+
+    make_toggle_button(button_frame, "❌ Exit", root.destroy, "#FF4C4C").pack(side="left", padx=25)
+    sound_btn = ttk.Button(button_frame, text="🔊 Sound On", command=toggle_sound)
+    sound_btn.pack(side="left", padx=25)
+
+def show_instructions(level, color):
+    clear_window()
+    set_background("11.jpg")
+
+    global difficulty, level_color
+    difficulty = level
+    level_color = color
+
+    frame = tk.Frame(root, bg="#1A022B", bd=8, relief="ridge")
+    frame.place(relx=0.5, rely=0.5, anchor="center")
+
+    tk.Label(frame, text="📘 QUIZ INSTRUCTIONS", font=("Poppins", 34, "bold"), bg="#1A022B", fg="#FFD700").pack(pady=20)
+
+    text = (
+        "Welcome to the Math Quiz!\n\n"
+        "🧮 Rules:\n"
+        "1️ 10 questions total.\n"
+        "2️ Each question timed (10 sec).\n"
+        "3️ 10 pts first try, 5 pts second.\n"
+        "4️ Skip allowed after 5 sec.\n\n"
+        "💡 Think fast and have fun!"
+    )
+    tk.Label(frame, text=text, font=("Poppins", 18), justify="left",
+             bg="#1A022B", fg="white", wraplength=800, padx=40, pady=20).pack()
+
+    make_toggle_button(frame, "▶ Start Quiz", start_quiz, "#00C851").pack(pady=10)
+    make_toggle_button(frame, "⬅ Back to Menu", show_start_screen, "#FFBB33").pack(pady=5)
+
+# === QUIZ CORE ===
+def randomInt(level):
+    return random.randint(1, 9) if level == "Easy" else random.randint(10, 99) if level == "Moderate" else random.randint(1000, 9999)
+
+def decideOperation():
+    return random.choice(['+', '-'])
+
+def start_quiz():
+    global score, question_number, attempt
+    score = 0
+    question_number = 0
+    attempt = 1
+    next_question()
+
+def next_question():
+    global num1, num2, operation, question_number, attempt, time_left, timer_running, progress, skip_button, skip_enabled, score_label
+
+    if question_number == 10:
+        displayResults()
+        return
+
+    clear_window()
+    set_background("10.jpg")
+
+    question_number += 1
+    attempt = 1
+    num1 = randomInt(difficulty)
+    num2 = randomInt(difficulty)
+    operation = decideOperation()
+
+    frame = tk.Frame(root, bg="#1A022B")
+    frame.place(relx=0.5, rely=0.52, anchor="center")
+
+    score_label = tk.Label(root, text=f"Score: {score}", font=("Poppins", 20, "bold"), bg="#1A022B", fg="yellow")
+    score_label.place(relx=0.95, rely=0.05, anchor="ne")
+
+    tk.Label(frame, text=f"Question {question_number}/10", font=("Poppins", 18, "bold"), bg="#1A022B", fg="white").pack(pady=5)
+    tk.Label(frame, text=f"{num1} {operation} {num2} =", font=("Poppins", 42, "bold"), bg="#290249", fg=level_color).pack(pady=10)
+
+    global answer_entry, timer_label
+    answer_entry = ttk.Entry(frame, font=("Poppins", 26), width=8, justify="center")
+    answer_entry.pack(pady=10)
+    answer_entry.focus()
+    answer_entry.bind("<Return>", lambda e: check_answer())
+
+    make_toggle_button(frame, "✅ Submit", check_answer, "#00C851").pack(pady=10)
+    skip_button = ttk.Button(frame, text="Skip", command=skip_question, state="disabled")
+    skip_button.pack(pady=5, ipadx=10, ipady=6)
+
+    time_left = 10
+    timer_running = True
+    skip_enabled = False
+    timer_label = tk.Label(frame, text="Time Left: 10s", font=("Poppins", 18), bg="#000000", fg="red")
+    timer_label.pack(pady=5)
+
+    progress = ttk.Progressbar(frame, orient="horizontal", length=450, mode="determinate", maximum=10)
+    progress.pack(pady=5)
+    progress['value'] = 10
+
+    countdown()
+
+def countdown():
+    global time_left, timer_running, skip_enabled
+    if not timer_running:
+        return
+    if time_left > 0:
+        timer_label.config(text=f"Time Left: {time_left}s")
+        progress['value'] = time_left
+        if time_left == 5 and not skip_enabled:
+            skip_button.config(state="normal")
+            skip_enabled = True
+        time_left -= 1
+        root.after(1000, countdown)
+    else:
+        play_sound(timeout_sound)
+        messagebox.showwarning("⏰ Time's Up!", f"Correct: {num1} {operation} {num2} = {num1 + num2 if operation == '+' else num1 - num2}")
+        timer_running = False
+        next_question()
+
+def isCorrect(user_answer):
+    return user_answer == (num1 + num2 if operation == '+' else num1 - num2)
+
+def check_answer():
+    global score, attempt, timer_running
+    timer_running = False
+    try:
+        user_answer = int(answer_entry.get())
+    except ValueError:
+        messagebox.showerror("Error", "Please enter a valid number!")
+        timer_running = True
+        countdown()
+        return
+
+    if isCorrect(user_answer):
+        play_sound(correct_sound)
+        score += 10 if attempt == 1 else 5
+        if score_label:
+            score_label.config(text=f"Score: {score}")
+        messagebox.showinfo("✅ Correct!", f"Nice! +{10 if attempt == 1 else 5} points.")
+        root.after(300, next_question)
+    else:
+        play_sound(wrong_sound)
+        if attempt == 1:
+            attempt += 1
+            messagebox.showwarning("❌ Try Again", "Incorrect! Try again.")
+            timer_running = True
+            countdown()
+        else:
+            messagebox.showerror("Wrong!", f"❌ Wrong!\nCorrect: {num1} {operation} {num2} = {num1 + num2 if operation == '+' else num1 - num2}")
+            root.after(300, next_question)
+
+def skip_question():
+    global timer_running
+    if skip_enabled:
+        timer_running = False
+        messagebox.showinfo("⏩ Skipped", f"Correct: {num1} {operation} {num2} = {num1 + num2 if operation == '+' else num1 - num2}")
+        root.after(300, next_question)
+    else:
+        messagebox.showinfo("Wait!", "⏳ You can skip after 5 seconds!")
+
+# === RESULTS SCREEN ===
+def displayResults():
+    clear_window()
+    set_background("11.jpg")
+
+    frame = tk.Frame(root, bg="#1A022B", bd=8, relief="ridge")
+    frame.place(relx=0.5, rely=0.5, anchor="center")
+
+    grade = calculate_grade(score)
+    tk.Label(frame, text="🎉 QUIZ COMPLETE 🎉", font=("Poppins", 36, "bold"), bg="#1A022B", fg="#FFD700").pack(pady=40)
+    tk.Label(frame, text=f"Your Final Score: {score}/100", font=("Poppins", 22), bg="#1A022B", fg="white").pack(pady=10)
+    tk.Label(frame, text=f"Your Grade: {grade}", font=("Poppins", 28, "bold"), fg="#00FFEA", bg="#1A022B").pack(pady=15)
+
+    make_toggle_button(frame, "🔁 Play Again", show_start_screen, "#00C851").pack(pady=10)
+    make_toggle_button(frame, "❌ Exit", root.destroy, "#FF4C4C").pack(pady=5)
+
+def calculate_grade(score):
+    return "A+" if score >= 90 else "A" if score >= 80 else "B" if score >= 70 else "C" if score >= 60 else "D" if score >= 50 else "F"
+
+# === START APP ===
+show_start_screen()
+root.mainloop()
