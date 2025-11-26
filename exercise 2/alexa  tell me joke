@@ -1,0 +1,180 @@
+import tkinter as tk                     # Import Tkinter
+from tkinter import messagebox            # Import messagebox
+from PIL import Image, ImageTk, ImageSequence  # Image handling + GIF frames
+import random                             # Random joke selection
+import os                                 # File/path checking
+import pyttsx3                            # Text-to-speech
+import threading                          # Run speech in background
+import time                                # Delay for auto punchline
+
+
+# ----- SPEAK FUNCTION -----
+def speak(text, speed_up=False):          # Function to speak text
+    def run_speech():                     # Inner thread function
+        engine = pyttsx3.init()           # Init TTS engine
+        engine.setProperty("rate", 165 if not speed_up else 185)  # Set speed
+        engine.setProperty("volume", 1)   # Max volume
+
+        voices = engine.getProperty("voices")   # Get voice list
+        for v in voices:                        # Loop voices
+            if "female" in v.name.lower() or "zira" in v.name.lower():   # Find female voice
+                engine.setProperty("voice", v.id)  # Set female voice
+                break
+
+        engine.say(text)                 # Queue text
+        engine.runAndWait()              # Speak it
+        engine.stop()                    # Stop engine
+
+    threading.Thread(target=run_speech).start()   # Run speech in new thread
+
+
+# ----- LOAD JOKES -----
+def load_jokes():                         # Function to load jokes
+    jokes = []                            # Empty list for jokes
+    file_path = "exercise 2/randomJokes.txt"   # Joke file path
+
+    if not os.path.isfile(file_path):     # Check file exists
+        messagebox.showerror("Error", f"{file_path} file not found!")  # Show error
+        return jokes                      # Return empty list
+
+    with open(file_path, "r", encoding="utf-8") as f:   # Open file
+        for line in f:                   # Read each line
+            if "?" in line:              # Must contain '?'
+                setup, punch = line.strip().split("?", 1)  # Split Q & answer
+                jokes.append((setup + "?", punch.strip())) # Store joke tuple
+    return jokes                          # Return all jokes
+
+
+# ----- MAIN APP -----
+class JokeApp:
+    def __init__(self, root):             # Constructor
+        self.root = root                  # Save root window
+        self.root.title("Alexa Joke Assistant")  # Title
+        self.root.geometry("600x600")     # Window size
+        self.root.minsize(500, 500)       # Minimum size
+
+        # ----- BACKGROUND -----
+        try:
+            self.bg_original = Image.open("exercise 2/bg.jpg")  # Load background
+        except:
+            self.bg_original = None       # No background
+            root.config(bg="#0f0f17")     # Set fallback color
+
+        self.bg_label = tk.Label(root)    # Label for background
+        self.bg_label.place(x=0, y=0, relwidth=1, relheight=1) # Fill screen
+
+        root.bind("<Configure>", self.resize_bg)  # Resize background when window changes
+
+        # Load jokes
+        self.jokes = load_jokes()         # Load jokes from file
+        self.current = None               # Current joke
+        self.punch_shown = False          # Punchline not shown yet
+
+        # ----- LOAD ANIM GIF -----
+        self.gif_frames = []              # Store GIF frames
+        gif = Image.open("exercise 2/emoj.gif")   # Open GIF
+
+        for frame in ImageSequence.Iterator(gif):  # Loop GIF frames
+            frame = frame.resize((130, 130))       # Resize each frame
+            self.gif_frames.append(ImageTk.PhotoImage(frame))  # Convert & store
+
+        self.gif_index = 0                # Start frame index
+        self.gif_speed = 150              # Animation speed (ms)
+
+        # Top-right emoji GIF
+        self.gif_label = tk.Label(root, bg="black", bd=0)  # Label for GIF
+        self.gif_label.place(relx=1.0, x=-10, y=10, anchor="ne")  # Place in corner
+
+        self.animate_gif()                # Start GIF animation
+
+        # ----- CENTER TEXT -----
+        self.setup_label = tk.Label(      # Setup text label
+            root,
+            text="",
+            fg="white",
+            bg="black",
+            font=("Segoe UI", 20, "bold"),
+            wraplength=700,
+            justify="center"
+        )
+        self.setup_label.pack(pady=(160, 10))   # Padding
+
+        self.punch_label = tk.Label(      # Punchline label
+            root,
+            text="",
+            fg="#33d6ff",
+            bg="black",
+            font=("Segoe UI", 16, "italic"),
+            wraplength=700,
+            justify="center"
+        )
+        self.punch_label.pack(pady=10)    # Padding
+
+        # ----- BUTTONS -----
+        tk.Button(root, text="Alexa tell me a Joke",  # Main joke button
+                  font=("Arial", 14),
+                  command=self.new_joke).pack(pady=5)
+
+        self.btn_punch = tk.Button(root, text="Show Punchline",  # Punchline button
+                                   font=("Arial", 14),
+                                   command=self.show_punch,
+                                   state="disabled")
+        self.btn_punch.pack(pady=5)
+
+        self.btn_next = tk.Button(root, text="Next Joke",        # Next joke
+                                  font=("Arial", 14),
+                                  command=self.new_joke,
+                                  state="disabled")
+        self.btn_next.pack(pady=5)
+
+    # ----- BACKGROUND AUTO-RESIZE -----
+    def resize_bg(self, event):            # On resize event
+        if self.bg_original:               # If bg exists
+            img = self.bg_original.resize((event.width, event.height))  # Resize
+            self.bg_img = ImageTk.PhotoImage(img)  # Convert to Tk
+            self.bg_label.config(image=self.bg_img) # Update background
+
+    # ----- GIF ANIMATION -----
+    def animate_gif(self):                 # Animate emoji
+        frame = self.gif_frames[self.gif_index]  # Current frame
+        self.gif_label.config(image=frame)       # Display it
+
+        self.gif_index = (self.gif_index + 1) % len(self.gif_frames)  # Next frame
+        self.root.after(self.gif_speed, self.animate_gif)             # Loop animation
+
+    # ----- NEW JOKE -----
+    def new_joke(self):                    # When new joke button pressed
+        self.punch_label.config(text="")   # Clear punchline
+        self.punch_shown = False           # Reset flag
+
+        if not self.jokes:                 # No jokes found
+            self.setup_label.config(text="No jokes found!")
+            return
+
+        self.current = random.choice(self.jokes)  # Choose random joke
+        self.setup_label.config(text=self.current[0])  # Show setup
+
+        self.gif_speed = 80                # Speed up animation
+        speak(self.current[0], speed_up=True)  # Speak setup
+
+        threading.Thread(target=self.auto_punchline).start()  # Auto punchline delay
+        self.btn_punch.config(state="normal")   # Enable punch button
+        self.btn_next.config(state="normal")    # Enable next button
+
+    # Auto punchline after delay
+    def auto_punchline(self):              # Auto reveal punchline
+        time.sleep(2)                      # Wait 2 seconds
+        if not self.punch_shown:           # If not shown manually
+            self.show_punch()              # Show punchline
+
+    # ----- SHOW PUNCH -----
+    def show_punch(self):                  # When punchline button pressed
+        self.punch_label.config(text=self.current[1])  # Display punchline
+        self.gif_speed = 60                # Faster animation
+        speak(self.current[1], speed_up=True)  # Speak punchline
+        self.punch_shown = True            # Mark shown
+
+
+root = tk.Tk()                             # Create app window
+JokeApp(root)                              # Start app
+root.mainloop()                             # Start GUI loop

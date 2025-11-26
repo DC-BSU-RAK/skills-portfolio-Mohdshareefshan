@@ -1,0 +1,282 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, simpledialog
+import os
+
+FILE_NAME = "exercise 3/studentMarks.txt"
+
+# ---------------------------
+# Helper Functions
+# ---------------------------
+def load_students():
+    students = []
+    if not os.path.exists(FILE_NAME):
+        return students
+
+    with open(FILE_NAME, "r") as f:
+        lines = f.read().strip().split("\n")
+        if not lines:
+            return students
+
+        for line in lines[1:]:
+            parts = line.split(",")
+            if len(parts) != 6:
+                continue
+
+            sid = parts[0]
+            name = parts[1]
+            c1, c2, c3 = map(int, parts[2:5])
+            exam = int(parts[5])
+
+            students.append({
+                "id": sid,
+                "name": name,
+                "cw1": c1,
+                "cw2": c2,
+                "cw3": c3,
+                "cw_total": c1 + c2 + c3,
+                "exam": exam
+            })
+    return students
+
+def save_students(students):
+    with open(FILE_NAME, "w") as f:
+        f.write(str(len(students)) + "\n")
+        for s in students:
+            f.write(f"{s['id']},{s['name']},{s['cw1']},{s['cw2']},{s['cw3']},{s['exam']}\n")
+
+def calc_percentage(cw, exam):
+    return round(((cw + exam) / 160) * 100, 2)
+
+def grade(p):
+    if p >= 70: return "A"
+    if p >= 60: return "B"
+    if p >= 50: return "C"
+    if p >= 40: return "D"
+    return "F"
+
+# ---------------------------
+# Gradient Button Class with Hover
+# ---------------------------
+class GradientButton(tk.Canvas):
+    def __init__(self, parent, text, command=None, width=180, height=45):
+        super().__init__(parent, width=width, height=height,
+                         highlightthickness=0, bd=0, relief="flat")
+        self.command = command
+        self.text = text
+        self.width = width
+        self.height = height
+
+        self.color1 = "#0f4c75"
+        self.color2 = "#3282b8"
+        self.hover_color1 = "#3282b8"
+        self.hover_color2 = "#0f4c75"
+
+        self.draw_gradient(self.color1, self.color2)
+
+        self.text_id = self.create_text(width//2, height//2, text=text,
+                                        fill="white", font=("Segoe UI", 11, "bold"))
+
+        self.bind("<Button-1>", lambda e: self.command())
+        self.bind("<Enter>", self.on_enter)
+        self.bind("<Leave>", self.on_leave)
+
+    def draw_gradient(self, color1, color2):
+        self.delete("all")
+        for i in range(self.height):
+            r1, g1, b1 = self.winfo_rgb(color1)
+            r2, g2, b2 = self.winfo_rgb(color2)
+            r = int(r1 + (r2 - r1) * i / self.height) // 256
+            g = int(g1 + (g2 - g1) * i / self.height) // 256
+            b = int(b1 + (b2 - b1) * i / self.height) // 256
+            color = f"#{r:02x}{g:02x}{b:02x}"
+            self.create_line(0, i, self.width, i, fill=color)
+        self.text_id = self.create_text(self.width//2, self.height//2, text=self.text,
+                                        fill="white", font=("Segoe UI", 11, "bold"))
+
+    def on_enter(self, event):
+        self.draw_gradient(self.hover_color1, self.hover_color2)
+
+    def on_leave(self, event):
+        self.draw_gradient(self.color1, self.color2)
+
+# ---------------------------
+# Modern Student Manager UI
+# ---------------------------
+class StudentManagerModernUI:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Student Manager - Dark Theme")
+        self.root.geometry("950x620")
+        self.root.configure(bg="#0A0A0A")  # dark background
+
+        # -----------------------
+        # Dark Mode Treeview Styling with Alternating Rows
+        # -----------------------
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure("Treeview",
+                        background="#1a1a1a",
+                        foreground="white",
+                        fieldbackground="#1a1a1a",
+                        rowheight=28,
+                        font=("Segoe UI", 10))
+        style.configure("Treeview.Heading",
+                        background="#0f0f0f",
+                        foreground="white",
+                        font=("Segoe UI", 10, "bold"))
+        style.map('Treeview', background=[('selected', '#3282b8')])
+
+        # -----------------------
+        # Sidebar Menu
+        # -----------------------
+        menu = tk.Frame(root, bg="#0A0A0A", width=200)
+        menu.pack(side="left", fill="y")
+
+        # -----------------------
+        # Display Frame
+        # -----------------------
+        display = tk.Frame(root, bg="#0A0A0A")
+        display.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+
+        # Load students
+        self.students = load_students()
+
+        # -----------------------
+        # Sidebar Buttons
+        # -----------------------
+        buttons = [
+            ("View All Records", self.view_all),
+            ("View Individual", self.view_individual),
+            ("Highest Score", self.highest),
+            ("Lowest Score", self.lowest),
+            ("Sort Records", self.sort_records),
+            ("Add Student", self.add_student),
+            ("Delete Student", self.delete_student),
+            ("Update Student", self.update_student)
+        ]
+        for text, cmd in buttons:
+            GradientButton(menu, text=text, command=cmd).pack(pady=8, padx=10)
+
+        # -----------------------
+        # Treeview Table
+        # -----------------------
+        self.tree = ttk.Treeview(display,
+                                 columns=("ID", "Name", "CW", "Exam", "Percent", "Grade"),
+                                 show="headings", style="Treeview")
+        self.tree.heading("ID", text="ID")
+        self.tree.heading("Name", text="Name")
+        self.tree.heading("CW", text="Coursework (60)")
+        self.tree.heading("Exam", text="Exam (100)")
+        self.tree.heading("Percent", text="Percent %")
+        self.tree.heading("Grade", text="Grade")
+        self.tree.pack(fill="both", expand=True)
+
+        self.tree.tag_configure('oddrow', background='#1a1a1a')
+        self.tree.tag_configure('evenrow', background='#2a2a2a')
+
+        scrollbar = ttk.Scrollbar(display, command=self.tree.yview)
+        scrollbar.pack(side="right", fill="y")
+        self.tree.configure(yscrollcommand=scrollbar.set)
+
+    # ---------------------------
+    # Table Populate with Alternating Rows
+    # ---------------------------
+    def populate(self, students):
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+        for i, s in enumerate(students):
+            percent = calc_percentage(s["cw_total"], s["exam"])
+            tag = 'evenrow' if i % 2 == 0 else 'oddrow'
+            self.tree.insert("", "end",
+                             values=(s["id"], s["name"],
+                                     s["cw_total"], s["exam"],
+                                     percent, grade(percent)),
+                             tags=(tag,))
+
+    # ---------------------------
+    # Features
+    # ---------------------------
+    def view_all(self):
+        self.populate(self.students)
+
+    def view_individual(self):
+        sid = simpledialog.askstring("Find Student", "Enter Student ID:")
+        if not sid: return
+        student = next((s for s in self.students if s["id"] == sid), None)
+        if not student:
+            messagebox.showerror("Error", "Student not found.")
+            return
+        self.populate([student])
+
+    def highest(self):
+        if self.students:
+            top = max(self.students, key=lambda s: calc_percentage(s["cw_total"], s["exam"]))
+            self.populate([top])
+
+    def lowest(self):
+        if self.students:
+            low = min(self.students, key=lambda s: calc_percentage(s["cw_total"], s["exam"]))
+            self.populate([low])
+
+    def sort_records(self):
+        choice = messagebox.askquestion("Sort", "Sort Ascending? (No = Descending)")
+        reverse = (choice == "no")
+        self.students.sort(key=lambda s: calc_percentage(s["cw_total"], s["exam"]), reverse=reverse)
+        self.view_all()
+
+    def add_student(self):
+        sid = simpledialog.askstring("ID", "Student ID:")
+        name = simpledialog.askstring("Name", "Full Name:")
+        c1 = int(simpledialog.askstring("CW1", "Coursework 1:"))
+        c2 = int(simpledialog.askstring("CW2", "Coursework 2:"))
+        c3 = int(simpledialog.askstring("CW3", "Coursework 3:"))
+        exam = int(simpledialog.askstring("Exam", "Exam Mark:"))
+
+        self.students.append({
+            "id": sid,
+            "name": name,
+            "cw1": c1,
+            "cw2": c2,
+            "cw3": c3,
+            "cw_total": c1 + c2 + c3,
+            "exam": exam
+        })
+        save_students(self.students)
+        self.view_all()
+        messagebox.showinfo("Added", "Student added successfully!")
+
+    def delete_student(self):
+        sid = simpledialog.askstring("Delete", "Enter Student ID:")
+        student = next((s for s in self.students if s["id"] == sid), None)
+        if not student:
+            messagebox.showerror("Error", "Student not found.")
+            return
+        self.students.remove(student)
+        save_students(self.students)
+        self.view_all()
+        messagebox.showinfo("Deleted", "Student removed!")
+
+    def update_student(self):
+        sid = simpledialog.askstring("Update", "Student ID:")
+        student = next((s for s in self.students if s["id"] == sid), None)
+        if not student:
+            messagebox.showerror("Error", "Student not found.")
+            return
+
+        student["name"] = simpledialog.askstring("Name", "Full Name:", initialvalue=student["name"])
+        student["cw1"] = int(simpledialog.askstring("CW1", "Coursework 1:", initialvalue=student["cw1"]))
+        student["cw2"] = int(simpledialog.askstring("CW2", "Coursework 2:", initialvalue=student["cw2"]))
+        student["cw3"] = int(simpledialog.askstring("CW3", "Coursework 3:", initialvalue=student["cw3"]))
+        student["cw_total"] = student["cw1"] + student["cw2"] + student["cw3"]
+        student["exam"] = int(simpledialog.askstring("Exam", "Exam:", initialvalue=student["exam"]))
+
+        save_students(self.students)
+        self.view_all()
+        messagebox.showinfo("Updated", "Record updated!")
+
+# ---------------------------
+# Run App
+# ---------------------------
+root = tk.Tk()
+StudentManagerModernUI(root)
+root.mainloop()
