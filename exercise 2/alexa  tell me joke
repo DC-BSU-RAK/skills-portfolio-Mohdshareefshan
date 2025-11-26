@@ -178,3 +178,6 @@ class JokeApp:
 root = tk.Tk()                             # Create app window
 JokeApp(root)                              # Start app
 root.mainloop()                             # Start GUI loop
+#reference
+#chatgpt
+#https://stackoverflow.com/questions/16424091/how-to-play-animated-gif-in-tkinterg
