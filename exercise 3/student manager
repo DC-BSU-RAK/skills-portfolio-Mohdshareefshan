@@ -280,3 +280,5 @@ class StudentManagerModernUI:
 root = tk.Tk()
 StudentManagerModernUI(root)
 root.mainloop()
+#reference
+#chatgpt
