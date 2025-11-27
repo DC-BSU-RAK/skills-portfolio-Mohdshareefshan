@@ -38,14 +38,17 @@ def load_students():
             })
     return students
 
+
 def save_students(students):
     with open(FILE_NAME, "w") as f:
         f.write(str(len(students)) + "\n")
         for s in students:
             f.write(f"{s['id']},{s['name']},{s['cw1']},{s['cw2']},{s['cw3']},{s['exam']}\n")
 
+
 def calc_percentage(cw, exam):
     return round(((cw + exam) / 160) * 100, 2)
+
 
 def grade(p):
     if p >= 70: return "A"
@@ -54,8 +57,9 @@ def grade(p):
     if p >= 40: return "D"
     return "F"
 
+
 # ---------------------------
-# Gradient Button Class with Hover
+# Gradient Button Class
 # ---------------------------
 class GradientButton(tk.Canvas):
     def __init__(self, parent, text, command=None, width=180, height=45):
@@ -99,18 +103,22 @@ class GradientButton(tk.Canvas):
     def on_leave(self, event):
         self.draw_gradient(self.color1, self.color2)
 
+
 # ---------------------------
-# Modern Student Manager UI
+# Main UI Class
 # ---------------------------
 class StudentManagerModernUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Student Manager - Dark Theme")
-        self.root.geometry("950x620")
-        self.root.configure(bg="#0A0A0A")  # dark background
+        self.root.geometry("980x650")
+        self.root.configure(bg="#0A0A0A")
+
+        # Load database
+        self.students = load_students()
 
         # -----------------------
-        # Dark Mode Treeview Styling with Alternating Rows
+        # Treeview Style
         # -----------------------
         style = ttk.Style()
         style.theme_use("clam")
@@ -127,19 +135,33 @@ class StudentManagerModernUI:
         style.map('Treeview', background=[('selected', '#3282b8')])
 
         # -----------------------
-        # Sidebar Menu
+        # Sidebar
         # -----------------------
         menu = tk.Frame(root, bg="#0A0A0A", width=200)
         menu.pack(side="left", fill="y")
 
-        # -----------------------
-        # Display Frame
-        # -----------------------
         display = tk.Frame(root, bg="#0A0A0A")
         display.pack(side="right", fill="both", expand=True, padx=10, pady=10)
 
-        # Load students
-        self.students = load_students()
+        # -----------------------
+        # ADD SEARCH BAR 🔍
+        # -----------------------
+        search_frame = tk.Frame(display, bg="#0A0A0A")
+        search_frame.pack(fill="x", pady=5)
+
+        tk.Label(search_frame, text="Search:", fg="white", bg="#0A0A0A",
+                 font=("Segoe UI", 11)).pack(side="left", padx=5)
+
+        self.search_var = tk.StringVar()
+        self.search_var.trace("w", self.search_students)
+
+        search_entry = tk.Entry(search_frame,
+                                textvariable=self.search_var,
+                                font=("Segoe UI", 11),
+                                bg="#1a1a1a", fg="white",
+                                insertbackground="white",
+                                width=40)
+        search_entry.pack(side="left", padx=5)
 
         # -----------------------
         # Sidebar Buttons
@@ -158,15 +180,15 @@ class StudentManagerModernUI:
             GradientButton(menu, text=text, command=cmd).pack(pady=8, padx=10)
 
         # -----------------------
-        # Treeview Table
+        # TABLE
         # -----------------------
         self.tree = ttk.Treeview(display,
                                  columns=("ID", "Name", "CW", "Exam", "Percent", "Grade"),
-                                 show="headings", style="Treeview")
+                                 show="headings")
         self.tree.heading("ID", text="ID")
         self.tree.heading("Name", text="Name")
-        self.tree.heading("CW", text="Coursework (60)")
-        self.tree.heading("Exam", text="Exam (100)")
+        self.tree.heading("CW", text="Coursework")
+        self.tree.heading("Exam", text="Exam")
         self.tree.heading("Percent", text="Percent %")
         self.tree.heading("Grade", text="Grade")
         self.tree.pack(fill="both", expand=True)
@@ -178,20 +200,39 @@ class StudentManagerModernUI:
         scrollbar.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=scrollbar.set)
 
+        self.populate(self.students)
+
     # ---------------------------
-    # Table Populate with Alternating Rows
+    # Populate Table
     # ---------------------------
     def populate(self, students):
         for row in self.tree.get_children():
             self.tree.delete(row)
+
         for i, s in enumerate(students):
             percent = calc_percentage(s["cw_total"], s["exam"])
             tag = 'evenrow' if i % 2 == 0 else 'oddrow'
             self.tree.insert("", "end",
-                             values=(s["id"], s["name"],
-                                     s["cw_total"], s["exam"],
-                                     percent, grade(percent)),
+                             values=(s["id"], s["name"], s["cw_total"],
+                                     s["exam"], percent, grade(percent)),
                              tags=(tag,))
+
+    # ---------------------------
+    # SEARCH FUNCTION 🔍
+    # ---------------------------
+    def search_students(self, *args):
+        query = self.search_var.get().lower()
+
+        if query == "":
+            self.populate(self.students)
+            return
+
+        filtered = [
+            s for s in self.students
+            if query in s["id"].lower() or query in s["name"].lower()
+        ]
+
+        self.populate(filtered)
 
     # ---------------------------
     # Features
@@ -201,7 +242,8 @@ class StudentManagerModernUI:
 
     def view_individual(self):
         sid = simpledialog.askstring("Find Student", "Enter Student ID:")
-        if not sid: return
+        if not sid:
+            return
         student = next((s for s in self.students if s["id"] == sid), None)
         if not student:
             messagebox.showerror("Error", "Student not found.")
@@ -243,7 +285,6 @@ class StudentManagerModernUI:
         })
         save_students(self.students)
         self.view_all()
-        messagebox.showinfo("Added", "Student added successfully!")
 
     def delete_student(self):
         sid = simpledialog.askstring("Delete", "Enter Student ID:")
@@ -254,7 +295,6 @@ class StudentManagerModernUI:
         self.students.remove(student)
         save_students(self.students)
         self.view_all()
-        messagebox.showinfo("Deleted", "Student removed!")
 
     def update_student(self):
         sid = simpledialog.askstring("Update", "Student ID:")
@@ -272,7 +312,7 @@ class StudentManagerModernUI:
 
         save_students(self.students)
         self.view_all()
-        messagebox.showinfo("Updated", "Record updated!")
+
 
 # ---------------------------
 # Run App
@@ -280,5 +320,3 @@ class StudentManagerModernUI:
 root = tk.Tk()
 StudentManagerModernUI(root)
 root.mainloop()
-#reference
-#chatgpt
